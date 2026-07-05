@@ -99,7 +99,12 @@ async fn resolve_branch(
 ) -> Result<String, AppError> {
     match branch {
         Some(branch) => Ok(branch),
-        None => state.platform_client.default_branch(platform, owner, repo).await,
+        None => {
+            state
+                .platform_client
+                .default_branch(platform, owner, repo)
+                .await
+        }
     }
 }
 
@@ -128,24 +133,35 @@ async fn get_locs_cached(
         return Ok(cached);
     }
 
-    let tarball = state
-        .platform_client
-        .download_tarball(platform, &owner, &repo, &branch)
-        .await?;
+    // Run on an independent task so a client disconnecting mid-request doesn't cancel the work: the repo still gets downloaded, processed, and cached either way.
+    let state = state.clone();
+    let handle = tokio::spawn(async move {
+        let tarball = state
+            .platform_client
+            .download_tarball(platform, &owner, &repo, &branch)
+            .await?;
 
-    let start = std::time::Instant::now();
-    let result = compute_locs_blocking(tarball, filters).await?;
+        let start = std::time::Instant::now();
+        let result = compute_locs_blocking(tarball, filters).await?;
 
-    tracing::info!(platform = platform.as_str(), %owner, %repo, %branch, loc = result.loc, duration_ms = start.elapsed().as_millis(), "computed locs");
+        tracing::info!(platform = platform.as_str(), %owner, %repo, %branch, loc = result.loc, duration_ms = start.elapsed().as_millis(), "computed locs");
 
-    let result = Arc::new(result);
-    state.cache.insert(key, Arc::clone(&result)).await;
+        let result = Arc::new(result);
+        state.cache.insert(key, Arc::clone(&result)).await;
 
-    Ok(result)
+        Ok::<Arc<locs::Locs>, AppError>(result)
+    });
+
+    handle
+        .await
+        .map_err(|e| AppError::Upstream(format!("locs task panicked: {e}")))?
 }
 
 // Decompressing and walking a large tarball is CPU/IO-heavy synchronous work; run it on the blocking thread pool so it doesn't stall the async runtime's worker threads for other in-flight requests.
-async fn compute_locs_blocking(tarball: Vec<u8>, filters: Vec<Regex>) -> Result<locs::Locs, AppError> {
+async fn compute_locs_blocking(
+    tarball: Vec<u8>,
+    filters: Vec<Regex>,
+) -> Result<locs::Locs, AppError> {
     tokio::task::spawn_blocking(move || locs::compute_locs(&tarball, &filters))
         .await
         .map_err(|e| AppError::Upstream(format!("locs computation panicked: {e}")))?
