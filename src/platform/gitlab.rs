@@ -6,8 +6,8 @@ const TOKEN_ENV: &str = "GITLAB_TOKEN";
 
 fn auth(request: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
     match std::env::var(TOKEN_ENV) {
-        Ok(token) => request.header("PRIVATE-TOKEN", token),
-        Err(_) => request,
+        Ok(token) if !token.is_empty() => request.header("PRIVATE-TOKEN", token),
+        _ => request,
     }
 }
 

@@ -6,8 +6,8 @@ const TOKEN_ENV: &str = "CODEBERG_TOKEN";
 
 fn auth(request: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
     match std::env::var(TOKEN_ENV) {
-        Ok(token) => request.header("Authorization", format!("token {token}")),
-        Err(_) => request,
+        Ok(token) if !token.is_empty() => request.header("Authorization", format!("token {token}")),
+        _ => request,
     }
 }
 

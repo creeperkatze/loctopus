@@ -6,8 +6,8 @@ const TOKEN_ENV: &str = "BITBUCKET_TOKEN";
 
 fn auth(request: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
     match std::env::var(TOKEN_ENV) {
-        Ok(token) => request.header("Authorization", format!("Bearer {token}")),
-        Err(_) => request,
+        Ok(token) if !token.is_empty() => request.header("Authorization", format!("Bearer {token}")),
+        _ => request,
     }
 }
 
