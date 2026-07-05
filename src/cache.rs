@@ -80,6 +80,15 @@ impl Cache {
         Some(value)
     }
 
+    pub async fn entry_count(&self) -> i64 {
+        sqlx::query_as("SELECT COUNT(*) FROM cache WHERE expires_at > ?")
+            .bind(now_secs())
+            .fetch_one(&self.db)
+            .await
+            .map(|(count,): (i64,)| count)
+            .unwrap_or(0)
+    }
+
     pub async fn insert(&self, key: String, value: Arc<Locs>) {
         self.memory.insert(key.clone(), Arc::clone(&value)).await;
 

@@ -34,6 +34,10 @@ access private repos you have access to. Set `RUST_LOG=debug` for more verbose l
 
 `:platform` is `github`, `codeberg`, `gitlab`, or `bitbucket`.
 
+### `GET /`
+
+Returns server status.
+
 ### `GET /:platform/:owner/:repo`
 
 Returns the full line-count tree, e.g. `/github/modrinth/code` or `/codeberg/ziglang/zig`.

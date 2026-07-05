@@ -30,6 +30,8 @@ struct AppState {
     platform_client: Arc<ForgeClient>,
     cache: cache::Cache,
     inflight: inflight::Inflight,
+    started_at: Instant,
+    requests_served: Arc<AtomicU64>,
 }
 
 #[derive(Serialize)]
@@ -70,11 +72,15 @@ async fn main() {
         platform_client: Arc::new(ForgeClient::new()),
         cache,
         inflight: inflight::Inflight::default(),
+        started_at: Instant::now(),
+        requests_served: Arc::new(AtomicU64::new(0)),
     };
 
     let app = Router::new()
+        .route("/", get(get_status))
         .route("/:platform/:owner/:repo", get(get_locs))
         .route("/:platform/:owner/:repo/badge", get(get_badge))
+        .fallback(|| async { AppError::NotFound("not found".to_string()) })
         .layer(TraceLayer::new_for_http())
         .with_state(state);
 
@@ -93,11 +99,7 @@ async fn main() {
 }
 
 fn parse_platform(platform: &str) -> Result<Platform, AppError> {
-    Platform::parse(platform).ok_or_else(|| {
-        AppError::NotFound(format!(
-            "unsupported platform '{platform}' (expected 'github', 'codeberg', 'gitlab', or 'bitbucket')"
-        ))
-    })
+    Platform::parse(platform).ok_or_else(|| AppError::NotFound("not found".to_string()))
 }
 
 async fn resolve_branch(
@@ -203,11 +205,23 @@ async fn compute_locs_blocking(
         .map_err(|e| AppError::Upstream(format!("locs computation panicked: {e}")))?
 }
 
+async fn get_status(State(state): State<AppState>) -> Json<serde_json::Value> {
+    let cache_entries = state.cache.entry_count().await;
+
+    Json(json!({
+        "version": env!("CARGO_PKG_VERSION"),
+        "uptimeSeconds": state.started_at.elapsed().as_secs(),
+        "requestsServed": state.requests_served.load(Ordering::Relaxed),
+        "cacheEntries": cache_entries,
+    }))
+}
+
 async fn get_locs(
     State(state): State<AppState>,
     Path((platform, owner, repo)): Path<(String, String, String)>,
     Query(query): Query<LocsQuery>,
 ) -> Result<Json<Arc<locs::Locs>>, AppError> {
+    state.requests_served.fetch_add(1, Ordering::Relaxed);
     let platform = parse_platform(&platform)?;
     let result = get_locs_cached(&state, platform, owner, repo, query.branch, query.filter).await?;
     Ok(Json(result))
@@ -218,6 +232,7 @@ async fn get_badge(
     Path((platform, owner, repo)): Path<(String, String, String)>,
     Query(query): Query<BadgeQuery>,
 ) -> Result<Json<serde_json::Value>, AppError> {
+    state.requests_served.fetch_add(1, Ordering::Relaxed);
     let platform = parse_platform(&platform)?;
     let result = get_locs_cached(&state, platform, owner, repo, query.branch, query.filter).await?;
 
