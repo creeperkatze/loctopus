@@ -142,7 +142,12 @@ async fn get_locs_cached(
     .expect("serializing cache key");
 
     if let Some(cached) = state.cache.get(&key).await {
-        tracing::debug!(platform = platform.as_str(), %owner, %repo, %branch, "cache hit");
+        tracing::info!(
+            platform = platform.as_str(), %owner, %repo, %branch,
+            loc = cached.loc,
+            cached = true,
+            "served cached tarball"
+        );
         return Ok(cached);
     }
 
@@ -183,6 +188,7 @@ async fn get_locs_cached(
             bytes = bytes_read.load(Ordering::Relaxed),
             ttfb_ms = ?ttfb_ms,
             duration_ms = start.elapsed().as_millis(),
+            cached = false,
             "streamed and processed tarball"
         );
 
