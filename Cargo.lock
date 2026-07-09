@@ -851,7 +851,7 @@ dependencies = [
 
 [[package]]
 name = "loctopus"
-version = "1.0.8"
+version = "1.0.9"
 dependencies = [
  "axum",
  "flate2",

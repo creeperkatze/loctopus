@@ -1,6 +1,6 @@
 [package]
 name = "loctopus"
-version = "1.0.8"
+version = "1.0.9"
 edition = "2021"
 license = "AGPL-3.0"
 
